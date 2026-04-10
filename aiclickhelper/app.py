@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PyQt5.QtWidgets import QApplication
 
+from .auto_advance import AutoAdvanceController
 from .config import AppConfig
 from .controller import SessionController
 from .cursor_watcher import CursorProximityWatcher
@@ -40,15 +41,18 @@ def main() -> int:
     controller = SessionController(config)
     overlay = OverlayWindow()
     watcher = CursorProximityWatcher(radius_px=config.cursor_hide_radius_px)
+    auto_advance = AutoAdvanceController(config, controller)
 
     def handle_action_change(action) -> None:
         target = getattr(action, "mapped_screen_point", None) if action is not None else None
         watcher.set_target(target)
+        auto_advance.set_action(action)
 
     controller.actionChanged.connect(handle_action_change)
     watcher.proximityChanged.connect(
         lambda is_near: overlay.hide_marker_only() if is_near else overlay.show_marker_only()
     )
+    watcher.proximityChanged.connect(auto_advance.handle_proximity_changed)
 
     window = MainWindow(controller, overlay)
     window.show()

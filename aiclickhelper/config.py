@@ -21,6 +21,8 @@ class AppConfig:
     openai_timeout_seconds: int = 60
     pre_next_capture_delay_ms: int = 250
     capture_hide_delay_ms: int = 150
+    auto_advance_timeout_ms: int = 3000
+    auto_advance_poll_ms: int = 120
     save_debug_images: bool = True
     data_root: Path = _default_data_root()
 
