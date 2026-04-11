@@ -7,7 +7,7 @@ from typing import Any
 from openai import OpenAI
 
 from .config import AppConfig
-from .models import CaptureMetadata, ChatMessage, GuidedAction, SessionData, Speaker
+from .models import SessionData
 
 
 class OpenAIAdapter:

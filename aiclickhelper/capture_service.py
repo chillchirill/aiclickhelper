@@ -8,7 +8,7 @@ from uuid import uuid4
 import mss
 from PIL import Image, ImageDraw
 
-from .models import CaptureMetadata, DisplayMonitor, GuidedAction, Point2D, utc_now_iso
+from .models import CaptureMetadata, DisplayMonitor, GuidedAction, utc_now_iso
 
 
 class CaptureService:

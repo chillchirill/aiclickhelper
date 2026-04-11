@@ -178,7 +178,7 @@ class SessionController(QObject):
         )
 
         screenshot_data_url = self._capture_service.encode_image_data_url(
-            Path(capture.image_path)
+            Path(capture.request_image_path)
         )
         self.session.state = SessionState.WAITING_FOR_MODEL
         self._emit_status()
