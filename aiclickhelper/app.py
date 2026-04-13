@@ -29,12 +29,15 @@ def load_dotenv(path: str = ".env") -> None:
         name, value = line.split("=", 1)
         name = name.strip()
         value = value.strip()
+        # adding API key to shell environment 
         if name and name not in os.environ:
             os.environ[name] = value
 
 
 def main() -> int:
+    # Load environment variables from .env
     load_dotenv()
+    
     enable_windows_dpi_awareness()
     app = QApplication(sys.argv)
     app.setApplicationName("AiClickHelper")
