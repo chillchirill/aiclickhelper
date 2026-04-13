@@ -1,149 +1,55 @@
-# AiClickHelper Programme Description and the Use of Polymorphism, File Handling, and Dictionaries
+# AiClickHelper: Specific Uses of Polymorphism, File Handling, and Dictionaries
 
-## 1. Introduction and Background Research
+## 1. Introduction and Structure of the Program
 
-### Overview of the Program
+AiClickHelper is a Windows PyQt5 application that guides a human operator through another GUI. The runtime flow is: `main.py` starts the app, `aiclickhelper/app.py` wires the objects together, `SessionController` handles the turn logic, `CaptureService` takes the screenshot, `OpenAIAdapter` sends the request, `ResponseNormalizer` converts the reply into a local action object, `CoordinateMapper` maps model coordinates to screen coordinates, `MainWindow` shows the instruction, and `OverlayWindow` highlights the target on the desktop.
 
-AiClickHelper is a Windows desktop application written in Python with PyQt5. Its purpose is to support a human operator while completing tasks in another graphical user interface. The program captures the current desktop, sends the screenshot together with the current session context to the OpenAI Responses API, receives one recommended next action, and then presents that action in a small chat-style window and a transparent on-screen overlay. The operator remains in control at all times, so the software is advisory rather than fully autonomous.
+The program is split into clear layers rather than one large file. The UI layer is in `aiclickhelper/ui/main_window.py`, orchestration is in `aiclickhelper/controller.py`, persistence is in `aiclickhelper/session_store.py`, logging is in `aiclickhelper/event_logger.py`, and screen interaction is handled by `capture_service.py`, `overlay.py`, `cursor_watcher.py`, and `auto_advance.py`.
 
-From a structural perspective, the program is divided into clear layers. The application entry point in `aiclickhelper/app.py` creates the main objects and connects them together. The orchestration logic is handled by `SessionController` in `aiclickhelper/controller.py`. The persistent session data is managed by `SessionStore` in `aiclickhelper/session_store.py`. The visible user interface is implemented in `aiclickhelper/ui/main_window.py`, while `aiclickhelper/overlay.py` draws the visual marker on the desktop.
+## 2. Specific Cases in This App
 
-### Background Concepts
+### Polymorphism
 
-Polymorphism is an object-oriented programming concept in which different objects can be treated through a common interface while still performing behaviour specific to their own type. In Python, polymorphism often appears through inheritance, method overriding, and duck typing. This makes Python suitable for GUI applications because framework classes can define a shared interface and subclasses can implement specialised behaviour.
+The most visible use of polymorphism is through Qt inheritance.
 
-File handling refers to creating, opening, reading, writing, and appending data in files. In Python, file handling is commonly performed through context managers such as `with open(...)`, which help ensure files are safely closed after use. File handling is important in real software because applications usually need to persist settings, logs, screenshots, or user data between runs.
+Case 1: `MainWindow(QMainWindow)` in `aiclickhelper/ui/main_window.py`. Qt treats this object as a standard main window, but the subclass adds AiClickHelper-specific behavior such as prompt submission, chat rendering, status updates, and the `Next` action flow.
 
-Dictionaries are one of Python's core built-in data structures. A dictionary stores data as key-value pairs, which makes it especially useful for structured information such as JSON payloads, configuration values, event details, and mappings between program states and user-facing text.
+Case 2: `OverlayWindow(QWidget)` in `aiclickhelper/overlay.py`. This is a stronger example because the subclass overrides `paintEvent()`. Qt calls that method polymorphically when the widget must repaint, and AiClickHelper uses that hook to draw the target ring, crosshair, and label. The overlay is still a widget, but it behaves differently from a default widget.
 
-### Background Sources
+Case 3: `SessionController(QObject)`, `TurnWorker(QObject)`, `CursorProximityWatcher(QObject)`, and `AutoAdvanceController(QObject)`. These classes share the same Qt base type, which allows them all to use signals, timers, and thread integration, but each object has a different role. `TurnWorker` performs the API request on a worker thread, `SessionController` manages state transitions, `CursorProximityWatcher` emits proximity events, and `AutoAdvanceController` reacts to those events and decides when to continue automatically.
 
-The discussion in this report aligns with the Python documentation, which explains object-oriented programming through classes and inheritance, file operations through built-in I/O and `pathlib`, and associative data storage through dictionaries. These sources are appropriate for academic referencing because they are primary technical documentation published by the Python Software Foundation.
+Case 4: enums in `aiclickhelper/models.py` inherit from both `str` and `Enum`. `ActionType`, `Speaker`, and `SessionState` act like controlled program states, but they also behave as strings when the app writes JSON or event logs. This is useful polymorphic behavior because one value works both as an enum in logic and as text in storage.
 
-## 2. Description of the Patterns
+### File Handling
 
-### How Python Implements Polymorphism
+File handling is part of the core workflow, not just setup.
 
-Python supports polymorphism in multiple ways:
+Case 1: configuration loading in `aiclickhelper/app.py`. `load_dotenv()` reads `.env`, splits each line, and places values into `os.environ`. This is how the app injects the API key without storing it directly in code.
 
-1. through inheritance, where a subclass extends a parent class;
-2. through method overriding, where a subclass provides its own implementation of a shared method;
-3. through duck typing, where an object is accepted because it behaves correctly rather than because it belongs to one exact class.
+Case 2: session persistence in `aiclickhelper/session_store.py`. `save_session()` creates a per-session directory and writes `session.json`. That file becomes the local source of truth for the current run: message history, captures, actions, current state, summary, and last error.
 
-In AiClickHelper, the clearest example is the PyQt class hierarchy. `MainWindow` inherits from `QMainWindow` in `aiclickhelper/ui/main_window.py`, `OverlayWindow` inherits from `QWidget` in `aiclickhelper/overlay.py`, and both are still treated by Qt as window objects that can be shown, hidden, resized, and updated. At the same time, each subclass performs different behaviour. For example, `OverlayWindow.paintEvent()` overrides the standard widget painting behaviour so the overlay can draw a pulsing target marker on the desktop. This is runtime polymorphism because Qt calls the method appropriate to the concrete object.
+Case 3: event logging in `aiclickhelper/event_logger.py`. The `append()` method writes to `events.jsonl` in append mode, one JSON object per line. This is a concrete logging mechanism. The controller records `session_created`, `user_prompt_submitted`, `screenshot_captured`, `guided_action_ready`, and `error`, so the app keeps a replayable execution trail.
 
-Another practical example is `SessionController` and `TurnWorker`, which both inherit from `QObject` in `aiclickhelper/controller.py`. Because they are Qt objects, they can participate in the signal-slot system even though they have different responsibilities. This shows how a framework can interact with different objects through the same base type while allowing each one to provide specialised logic.
+Case 4: screenshot storage in `aiclickhelper/controller.py` and `aiclickhelper/capture_service.py`. Every turn creates a file like `step-001.png` inside a session-specific screenshots folder. If debug output is enabled, the app also writes annotated images that show the mapped target visually. This is useful for debugging coordinate mistakes and checking whether the model pointed to the correct place.
 
-My own simplified example is shown below:
+Case 5: image re-use for API transport in `CaptureService.encode_image_data_url()`. The saved PNG file is read back from disk as bytes, base64-encoded, and sent to OpenAI as a data URL. So file handling is not only for storage; it is also part of the request pipeline.
 
-```python
-class Notification:
-    def send(self):
-        raise NotImplementedError
+### Dictionaries
 
+Dictionaries are the main transport format between layers.
 
-class EmailNotification(Notification):
-    def send(self):
-        return "Sending an email"
+Case 1: OpenAI request construction in `aiclickhelper/openai_adapter.py`. `_build_request()` creates a nested dictionary with keys such as `"model"`, `"instructions"`, `"input"`, `"reasoning"`, and optionally `"previous_response_id"`. The same method also creates nested dictionaries inside the `input` list for the text and image items. This is the bridge between local Python objects and the external API.
 
+Case 2: model response normalization in `aiclickhelper/response_normalizer.py`. The assistant output is parsed into a dictionary called `payload`, and the program extracts `"action_type"`, `"target_point"`, `"target_region"`, `"confidence"`, `"user_instruction"`, and other fields. The dictionary is then converted into a `GuidedAction`. If keys are missing or malformed, the code falls back to a blocked action.
 
-class SmsNotification(Notification):
-    def send(self):
-        return "Sending an SMS"
+Case 3: event details in `SessionController`. When the controller calls `append_event()`, it passes small dictionaries such as `{"prompt": prompt}` or `{"action_type": action.action_type.value, "confidence": action.confidence.value}`. This means dictionaries are the standard format for logging runtime facts.
 
+Case 4: JSON-safe serialization in `aiclickhelper/session_store.py`. `_to_json_safe()` recursively walks through enums, dataclasses, lists, and dictionaries to produce a dictionary structure that `json.dump()` can write. Without that conversion step, the session object graph would not be serializable.
 
-def deliver_message(item: Notification):
-    print(item.send())
-```
-
-In this example, `deliver_message()` can work with different subclasses through the same interface. This is similar to how Qt works with different window objects in AiClickHelper.
-
-### How Python Implements File Handling
-
-Python file handling normally uses:
-
-1. path management through `pathlib.Path`;
-2. context managers with `with ... open(...)`;
-3. text or JSON serialisation for persistent storage.
-
-AiClickHelper uses file handling extensively. In `aiclickhelper/app.py`, the `load_dotenv()` function reads the `.env` file using `Path(path).read_text(...)` and loads environment values into `os.environ`. In `aiclickhelper/session_store.py`, the `save_session()` method creates directories if necessary and writes the complete session to `session.json` using `json.dump(...)`. In `aiclickhelper/event_logger.py`, the `append()` method opens `events.jsonl` in append mode and stores each new event on a separate line. The controller also saves screenshots and debug images to session-specific folders.
-
-This means file handling is not a minor feature in this project; it is part of the core workflow. Without file handling, the program would lose screenshots, chat history, action history, and debugging records after every run.
-
-My own simplified example is:
-
-```python
-from pathlib import Path
-
-report_path = Path("report.txt")
-
-with report_path.open("w", encoding="utf-8") as file:
-    file.write("Step 1 completed\n")
-
-with report_path.open("a", encoding="utf-8") as file:
-    file.write("Step 2 completed\n")
-
-with report_path.open("r", encoding="utf-8") as file:
-    content = file.read()
-
-print(content)
-```
-
-This example demonstrates the same principles used in the application: create or open a file, write structured content, append more data, and read it back when needed.
-
-### How Python Implements Dictionaries
-
-Python dictionaries store data in key-value pairs and are especially useful when data needs named fields. They are flexible, fast to access, and naturally compatible with JSON. In practice, dictionaries often act as a bridge between in-memory objects and external APIs or file formats.
-
-AiClickHelper uses dictionaries in several important places:
-
-1. In `aiclickhelper/openai_adapter.py`, the API request is assembled as a nested dictionary containing keys such as `"model"`, `"instructions"`, `"input"`, and `"reasoning"`.
-2. In `aiclickhelper/response_normalizer.py`, the program parses the model's JSON output into a Python dictionary called `payload`, then reads keys like `"action_type"`, `"target_point"`, `"confidence"`, and `"user_instruction"`.
-3. In `aiclickhelper/session_store.py`, helper function `_to_json_safe()` recursively converts dataclasses, enums, lists, and dictionaries into a JSON-safe dictionary structure before saving.
-4. In `aiclickhelper/ui/main_window.py`, a dictionary is used to map `Speaker.USER`, `Speaker.ASSISTANT`, and `Speaker.SYSTEM` to readable labels in the chat window.
-
-These examples show that dictionaries are central to this application because they support configuration-like mappings, API communication, event details, and serialisation.
-
-My own simplified example is:
-
-```python
-student = {
-    "name": "Anna",
-    "course": "Computer Science",
-    "grade": 85
-}
-
-print(student["name"])
-student["grade"] = 90
-student["email"] = "anna@example.com"
-```
-
-This example demonstrates why dictionaries are useful: values can be accessed by meaningful keys, updated later, and extended with new information.
-
-### How the Three Techniques Work Together in This Program
-
-The three concepts are closely connected in AiClickHelper rather than isolated from one another.
-
-- Polymorphism supports the GUI architecture because different Qt-based objects can behave as windows, widgets, or controllers while still integrating through common framework interfaces.
-- File handling supports persistence because sessions, logs, screenshots, and configuration data must be saved and loaded from disk.
-- Dictionaries support structured communication because both API requests and API responses are easiest to represent as named key-value pairs.
-
-Together, these techniques make the application easier to organise, extend, and debug.
+Case 5: UI label mapping in `aiclickhelper/ui/main_window.py`. A dictionary maps `Speaker.USER`, `Speaker.ASSISTANT`, and `Speaker.SYSTEM` to human-readable labels when the chat history is rendered. This is a small case, but it shows dictionary use even in the presentation layer.
 
 ## 3. Summary and Conclusion
 
-This assessment shows that AiClickHelper is more than a simple script. It is a structured Python application that combines GUI programming, API communication, data modelling, and persistent storage. Polymorphism is visible in the way Qt objects are subclassed and customised, especially through classes such as `MainWindow`, `OverlayWindow`, `SessionController`, and `TurnWorker`. File handling is used to load environment variables, save session history, append event logs, and manage screenshots. Dictionaries are used throughout the code to represent JSON payloads, event details, and display mappings.
+In this app, polymorphism is mainly architectural: inherited Qt classes let different objects plug into the same framework while keeping specialized behavior. File handling supports the real runtime: loading configuration, saving sessions, writing logs, storing screenshots, and re-reading images for API submission. Dictionaries carry structured data across the whole system: API requests, parsed model replies, event payloads, and serialized session data.
 
-From my reflection, these three Python techniques are especially effective when they are used together. Polymorphism improves code organisation by allowing each class to specialise its behaviour without breaking the wider framework. File handling makes the program practical because it preserves state across sessions and supports debugging. Dictionaries make the program flexible because external API data and internal structured data can be handled in a readable way.
-
-My experience of analysing this program suggests that Python is well suited to this kind of assessment because the language makes advanced ideas relatively approachable. In particular, the combination of dataclasses, dictionaries, and file I/O creates clear and maintainable code, while PyQt demonstrates how polymorphism becomes useful in a real desktop application rather than only in theory.
-
-## References
-
-Python Software Foundation. (2026). *The Python Tutorial*. Available at: https://docs.python.org/3/tutorial/ (Accessed: 13 April 2026).
-
-Python Software Foundation. (2026). *Built-in Functions*. Available at: https://docs.python.org/3/library/functions.html (Accessed: 13 April 2026).
-
-Python Software Foundation. (2026). *pathlib - Object-oriented filesystem paths*. Available at: https://docs.python.org/3/library/pathlib.html (Accessed: 13 April 2026).
-
-Python Software Foundation. (2026). *json - JSON encoder and decoder*. Available at: https://docs.python.org/3/library/json.html (Accessed: 13 April 2026).
+The important point is that these are not abstract textbook features here. They directly support the app's turn-based workflow, debugging, and persistence. Polymorphism shapes how the app is built, file handling preserves what happened, and dictionaries move structured data between every major layer.
