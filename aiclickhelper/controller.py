@@ -44,6 +44,8 @@ class TurnWorker(QObject):
 
     def run(self) -> None:
         try:
+            # This runs on a QThread so the main Qt event loop stays responsive
+            # while the network call is in flight.
             response_id, assistant_text = self._adapter.request_guided_action(
                 session=self._session,
                 new_prompt=self._prompt,
@@ -158,6 +160,8 @@ class SessionController(QObject):
         self._emit_status()
 
         try:
+            # The UI hides itself before capture so the assistant window does
+            # not become the main thing the model sees on screen.
             self.capturePreparationStarted.emit()
             QApplication.processEvents()
             QThread.msleep(self._config.capture_hide_delay_ms)
@@ -184,6 +188,8 @@ class SessionController(QObject):
         self._emit_status()
 
         worker_session = replace(self.session)
+        # The worker gets a snapshot-like copy so the request cannot race with
+        # later UI changes in the main thread.
         worker_session.history = list(self.session.history)
         worker_session.actions = list(self.session.actions)
         worker_session.captures = list(self.session.captures)
@@ -315,6 +321,8 @@ class SessionController(QObject):
         self.statusChanged.emit(self.session.state.value)
 
     def _assistant_text_for_history(self, action: GuidedAction) -> str:
+        # The chat UI stores a readable summary, not raw JSON, so the operator
+        # sees intent and expected outcome instead of protocol details.
         parts = [
             f"Recommended action: {action.action_type.value}",
             f"Why: {action.explanation}",

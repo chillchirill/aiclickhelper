@@ -41,6 +41,7 @@ class OverlayWindow(QWidget):
             self.clear_action()
             return
 
+        # The overlay only renders the already-mapped screen target.
         self._target_point = action.mapped_screen_point
         self._target_label = self._label_for_action(action)
         self._visible_marker = True
@@ -144,6 +145,8 @@ class OverlayWindow(QWidget):
     def _apply_click_through(self) -> None:
         hwnd = int(self.winId())
         user32 = ctypes.windll.user32
+        # These extended styles make the overlay visible but non-interactive,
+        # so clicks still go to the real application underneath it.
         style = user32.GetWindowLongW(hwnd, -20)
         style |= 0x00080000
         style |= 0x00000020

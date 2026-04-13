@@ -23,6 +23,7 @@ class CaptureService:
             debug_image_path.parent.mkdir(parents=True, exist_ok=True)
 
         with mss.mss() as sct:
+            # monitors[0] in mss is the full virtual desktop across all displays.
             virtual_monitor = sct.monitors[0]
             shot = sct.grab(virtual_monitor)
             image = Image.frombytes("RGB", shot.size, shot.rgb)
@@ -56,6 +57,7 @@ class CaptureService:
         )
 
     def encode_image_data_url(self, image_path: Path) -> str:
+        # The Responses API expects image input as a URL or data URL.
         raw = image_path.read_bytes()
         encoded = base64.b64encode(raw).decode("ascii")
         return f"data:image/png;base64,{encoded}"

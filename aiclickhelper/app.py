@@ -16,6 +16,8 @@ from .ui.main_window import MainWindow
 
 
 def load_dotenv(path: str = ".env") -> None:
+    # We keep .env loading explicit and tiny so the project does not depend
+    # on an extra package just for local configuration files.
     env_path = Path(path)
     if not env_path.exists():
         return
@@ -44,6 +46,8 @@ def main() -> int:
     auto_advance = AutoAdvanceController(config, controller)
 
     def handle_action_change(action) -> None:
+        # The same action update drives both visual guidance and the
+        # auto-advance state machine.
         target = getattr(action, "mapped_screen_point", None) if action is not None else None
         watcher.set_target(target)
         auto_advance.set_action(action)

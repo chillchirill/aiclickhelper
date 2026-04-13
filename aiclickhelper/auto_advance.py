@@ -46,6 +46,8 @@ class AutoAdvanceController(QObject):
             return
 
         if is_near and not self._armed:
+            # Entering the target area means "the user found the place".
+            # That does not complete the step yet; it only arms the watcher.
             self._armed = True
             self._baseline_image = self._capture_signature_image()
             return
@@ -65,6 +67,8 @@ class AutoAdvanceController(QObject):
 
         if not self._confirmed:
             if self._is_confirmation_detected():
+                # Confirmation is the user's real interaction:
+                # click for click-like actions, Enter for typing flows.
                 self._confirmed = True
                 self._confirm_started_at = time.monotonic()
             self._remember_key_states()
@@ -105,6 +109,8 @@ class AutoAdvanceController(QObject):
             with mss.mss() as sct:
                 shot = sct.grab(sct.monitors[0])
                 image = Image.frombytes("RGB", shot.size, shot.rgb)
+            # A tiny grayscale image is enough for cheap "did the screen change?"
+            # checks and is much cheaper than full-image comparisons.
             return image.convert("L").resize((96, 54))
         except Exception:
             return None

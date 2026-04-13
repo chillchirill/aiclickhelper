@@ -13,6 +13,8 @@ from .models import CaptureMetadata, ChatMessage, GuidedAction, SessionData, Spe
 class OpenAIAdapter:
     def __init__(self, config: AppConfig) -> None:
         self._config = config
+        # The SDK reads the key from here, but we validate it ourselves so
+        # startup fails with a clear message instead of a vague API error later.
         api_key = os.environ.get("OPENAI_API_KEY", "").strip()
         if not api_key or api_key == "paste_your_openai_api_key_here":
             raise RuntimeError(
@@ -29,6 +31,8 @@ class OpenAIAdapter:
         new_prompt: str,
         screenshot_data_url: str,
     ) -> tuple[str, str]:
+        # The controller treats this as one logical "turn": current screen in,
+        # one recommended next action out.
         request = self._build_request(session, new_prompt, screenshot_data_url)
         response = self._client.responses.create(**request)
 
@@ -97,6 +101,8 @@ class OpenAIAdapter:
         return request
 
     def _format_recent_context(self, session: SessionData) -> str:
+        # The API already has continuity via previous_response_id, but we still
+        # send a compact local recap to make the current turn easier to ground.
         lines: list[str] = [
             f"Session step index: {session.step_index}",
             "Use the screenshot as the source of truth for the current UI state.",
