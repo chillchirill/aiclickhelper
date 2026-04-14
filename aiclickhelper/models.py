@@ -109,6 +109,8 @@ class CaptureMetadata:
 
 @dataclass
 class GuidedAction:
+    # This is the app's normalized action contract. The rest of the program
+    # works with this object instead of raw model output.
     action_id: str
     step_index: int
     source_response_id: str
@@ -142,6 +144,7 @@ class SessionEvent:
 
 @dataclass
 class SessionData:
+    # SessionData is the single persisted source of truth for one operator run.
     session_id: str
     created_at: str
     updated_at: str

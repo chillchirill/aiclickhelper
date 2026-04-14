@@ -16,6 +16,8 @@ from .ui.main_window import MainWindow
 
 
 def load_dotenv(path: str = ".env") -> None:
+    # We keep .env loading explicit and tiny so the project does not depend
+    # on an extra package just for local configuration files.
     env_path = Path(path)
     if not env_path.exists():
         return
@@ -27,12 +29,15 @@ def load_dotenv(path: str = ".env") -> None:
         name, value = line.split("=", 1)
         name = name.strip()
         value = value.strip()
+        # adding API key to shell environment 
         if name and name not in os.environ:
             os.environ[name] = value
 
 
 def main() -> int:
+    # Load environment variables from .env
     load_dotenv()
+    
     enable_windows_dpi_awareness()
     app = QApplication(sys.argv)
     app.setApplicationName("AiClickHelper")
@@ -44,6 +49,8 @@ def main() -> int:
     auto_advance = AutoAdvanceController(config, controller)
 
     def handle_action_change(action) -> None:
+        # The same action update drives both visual guidance and the
+        # auto-advance state machine.
         target = getattr(action, "mapped_screen_point", None) if action is not None else None
         watcher.set_target(target)
         auto_advance.set_action(action)
