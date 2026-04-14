@@ -1,58 +1,56 @@
-# AiClickHelper: How the Project Actually Uses Polymorphism, File Handling, and Dictionaries
+# AiClickHelper: Use of Polymorphism, File Handling, and Dictionaries
 
-## 1. Introduction and Project Context
+## 1. Introduction
 
-AiClickHelper is a Windows PyQt5 desktop tool built around a simple loop: the user describes a task, the app captures the desktop, sends the screenshot and session context to OpenAI, receives one recommended next step, and shows it as text plus an on-screen marker. The system is advisory rather than autonomous.
+AiClickHelper is a Windows PyQt5 desktop assistant. The user enters a task, the app captures the desktop, sends the screenshot and session context to OpenAI, receives one recommended action, and shows it in the main window and overlay. The system is advisory: the user performs the action, while the app stores the session and prepares the next step.
 
-That design is close to the computer-use workflow described in the OpenAI guide, where a model inspects the current screen, returns actions, and continues from the updated UI state. The same guide recommends keeping a human in the loop for higher-risk actions, and this project follows that principle because it never performs the final click or typing automatically; it only advises and highlights the target (OpenAI, 2026).
+The project has a clear structure. `main.py` starts the app, `app.py` connects the main objects, `SessionController` controls the workflow, `MainWindow` displays the conversation, `OverlayWindow` marks the target, and the service classes handle screenshots, API requests, response parsing, and persistence.
 
-The architecture is clearly separated. `main.py` launches the program. `aiclickhelper/app.py` wires the objects together. `SessionController` in `aiclickhelper/controller.py` controls the flow. `MainWindow` presents the conversation, `OverlayWindow` draws the marker, `CaptureService` handles screenshots, `OpenAIAdapter` sends the request, `ResponseNormalizer` converts the reply into a safe internal action, and `SessionStore` persists the session.
+## 2. Specific Cases in This Project
 
-## 2. Specific Cases Inside This App
+### Polymorphism
 
-### Polymorphism as Part of the App Structure
+Polymorphism appears mainly through Qt inheritance.
 
-In this project, polymorphism is most visible in the Qt-based class structure. Several classes inherit from Qt base classes and then provide their own behavior while still fitting into the same framework.
+`MainWindow(QMainWindow)` extends the standard Qt window with chat history, status display, prompt input, and the `Next` action flow.
 
-The first example is `MainWindow(QMainWindow)` in `aiclickhelper/ui/main_window.py`. Qt treats it as a standard main window, but this subclass adds project-specific behavior: prompt sending, status updates, chat rendering, and the `Next` workflow.
+`OverlayWindow(QWidget)` is the clearest example because it overrides `paintEvent()`. Qt still treats it as a widget, but the subclass provides custom drawing logic for the target ring, crosshair, and label.
 
-`OverlayWindow(QWidget)` in `aiclickhelper/overlay.py` is a stronger example. It overrides `paintEvent()`, and that is where the app draws the pulsing ring and label over the target point. Qt still sees it as a widget, but during repainting the framework calls the subclass implementation.
+Several runtime classes also inherit from `QObject`: `SessionController`, `TurnWorker`, `CursorProximityWatcher`, and `AutoAdvanceController`. Because they share the same Qt base type, they can all use signals, timers, and thread integration, while each class keeps a separate responsibility.
 
-Another case is the group of `QObject`-based classes: `SessionController`, `TurnWorker`, `CursorProximityWatcher`, and `AutoAdvanceController`. They share the same Qt base type, so they can all use signals, timers, and thread-aware behavior, but each has a different role. `TurnWorker` handles background API work, `CursorProximityWatcher` checks whether the mouse is near the target, and `AutoAdvanceController` watches for a click, Enter press, or screen change before continuing.
+There is a smaller case in `models.py`, where `ActionType`, `Speaker`, and `SessionState` inherit from both `str` and `Enum`. This lets the same values work in program logic and in JSON output.
 
-There is also a smaller case in `aiclickhelper/models.py`: enums such as `ActionType`, `Speaker`, and `SessionState` inherit from both `str` and `Enum`. This lets the app treat them as controlled internal values while also storing them directly as strings in JSON and logs.
+### File Handling
 
-### File Handling as Part of the Runtime, Not Just Storage
+File handling is essential because the app keeps a full record of each session.
 
-File handling is central to this app because the project is designed to preserve a trace of each run.
+`load_dotenv()` reads `.env` and loads environment variables such as the API key.
 
-The first file-related step appears in `aiclickhelper/app.py`, where `load_dotenv()` reads `.env` and places values into the environment. This is how the application loads the OpenAI key without hard-coding it.
+`SessionStore.save_session()` writes `session.json`, which stores the current history, actions, captures, summary, and error state.
 
-The most important file-handling code lives in `aiclickhelper/session_store.py`. Each session gets its own directory, and `save_session()` writes `session.json` with the current history, actions, captures, summary, and error state.
+`EventLogger.append()` writes events to `events.jsonl`, one JSON object per line. These logs record prompt submission, screenshot capture, guided action creation, and errors.
 
-The project also writes logs in a practical format. `EventLogger.append()` in `aiclickhelper/event_logger.py` stores events in `events.jsonl`, one JSON object per line. The controller records session creation, prompt submission, screenshot capture, guided action creation, and error handling. This produces a replayable timeline of the session.
+`SessionController._capture_current_screen()` saves screenshots such as `step-001.png`. When debug output is enabled, the app also writes annotated copies showing the mapped target.
 
-Screenshot files are another important case. In `SessionController._capture_current_screen()`, each step is saved into a file such as `step-001.png`. If debug images are enabled, the app also writes an annotated copy showing where the mapped target ended up.
+`CaptureService.encode_image_data_url()` reads the saved screenshot back from disk and converts it into a data URL for the OpenAI request. File handling is therefore part of both storage and execution.
 
-Files are not only written for storage. `CaptureService.encode_image_data_url()` reads the saved PNG back from disk and converts it into a data URL for the OpenAI request.
+### Dictionaries
 
-### Dictionaries as the Glue Between Layers
+Dictionaries are used to move structured data through the program.
 
-Dictionaries are the main transport format inside the system.
+In `openai_adapter.py`, `_build_request()` creates the API request as a nested dictionary containing the model, instructions, recent context, image input, and previous response ID.
 
-The clearest example is in `aiclickhelper/openai_adapter.py`. `_build_request()` creates the request as a nested dictionary containing the model, instructions, recent context, screenshot input, and optional previous response ID. This is the bridge between the project’s Python objects and the external API format.
+In `response_normalizer.py`, the assistant output is parsed into a dictionary called `payload`. The code then reads fields such as `"action_type"`, `"target_point"`, `"confidence"`, and `"user_instruction"` to build a `GuidedAction`. If the data is invalid, the app falls back to a blocked action.
 
-The reverse step happens in `aiclickhelper/response_normalizer.py`. The assistant reply is parsed into a dictionary called `payload`, and the code reads keys such as `"action_type"`, `"target_point"`, `"confidence"`, and `"user_instruction"` before creating a `GuidedAction`. If the dictionary is incomplete or invalid, the app falls back to a blocked action.
+The controller also logs event details as dictionaries, for example prompt text, screenshot metadata, and action metadata.
 
-Dictionaries are also used for event details. When `SessionController` records `user_prompt_submitted`, `screenshot_captured`, or `guided_action_ready`, it passes small detail dictionaries into the logger. This keeps the logging format consistent across the whole app.
+Finally, `_to_json_safe()` converts dataclasses, enums, lists, and dictionaries into data that `json.dump()` can save. A smaller example appears in the UI, where a dictionary maps speaker values to chat labels.
 
-Finally, `SessionStore._to_json_safe()` turns dataclasses, enums, and lists into something `json.dump()` can write. The UI also uses a small dictionary in `MainWindow` to map `Speaker.USER`, `Speaker.ASSISTANT`, and `Speaker.SYSTEM` to readable chat labels.
+## 3. Summary
 
-## 3. Summary and Conclusion
+In AiClickHelper, these techniques support the real workflow rather than existing as isolated concepts. Polymorphism structures the Qt components, file handling preserves sessions and screenshots, and dictionaries carry structured data between the API, controller, storage, and UI.
 
-What stands out in AiClickHelper is that these features are not present as isolated programming concepts. They are part of the runtime design. Polymorphism makes the Qt-based architecture modular. File handling gives the app memory, screenshots, and logs. Dictionaries let information move cleanly between OpenAI, the controller, the logger, and the UI.
-
-Because of that, the project feels like a real desktop system rather than a demo script. It has a controlled flow, traceable runtime data, and clear separation between components. The strongest design choice is the human-in-the-loop approach: the app uses a computer-use style loop, but it keeps the final action with the operator, which makes the system easier to trust and debug.
+This design is consistent with the human-in-the-loop approach described in OpenAI’s computer use documentation, where the model works from the current screen state but higher-risk actions remain under user control (OpenAI, 2026).
 
 ## Reference
 
