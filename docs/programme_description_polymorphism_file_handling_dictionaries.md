@@ -28,7 +28,7 @@ File handling is essential because the app keeps a full record of each session.
 
 `SessionStore.save_session()` writes `session.json`, which stores the current history, actions, captures, summary, and error state.
 
-`EventLogger.append()` writes events to `events.jsonl`, one JSON object per line. These logs record prompt submission, screenshot capture, guided action creation, and errors.
+`EventLogger.append()` writes events to `events.json`, one JSON object per line. These logs record prompt submission, screenshot capture, guided action creation, and errors.
 
 `SessionController._capture_current_screen()` saves screenshots such as `step-001.png`. When debug output is enabled, the app also writes annotated copies showing the mapped target.
 
@@ -48,7 +48,7 @@ Finally, `_to_json_safe()` converts dataclasses, enums, lists, and dictionaries 
 
 ## 3. Summary
 
-In AiClickHelper, these techniques support the real workflow rather than existing as isolated concepts. Polymorphism structures the Qt components, file handling preserves sessions and screenshots, and dictionaries carry structured data between the API, controller, storage, and UI.
+In AIClickHelper, these techniques support the real workflow rather than existing as isolated concepts. Polymorphism structures the Qt components, file handling preserves sessions and screenshots, and dictionaries carry structured data between the API, controller, storage, and UI.
 
 This design is consistent with the human-in-the-loop approach described in OpenAI’s computer use documentation, where the model works from the current screen state but higher-risk actions remain under user control (OpenAI, 2026).
 
